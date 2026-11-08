@@ -168,6 +168,18 @@ describe('emergencyDetector (Safety-Biased Rule-Based Screener)', () => {
       expect(res.isEmergency).toBe(true)
       expect(res.category).toBe('STROKE')
     })
+
+    // 10) "anaphylaxis / throat closing"
+    it('detects "throat is closing up"', () => {
+      const res = detectEmergency('I accidentally ate peanuts and my throat is closing up')
+      expect(res.isEmergency).toBe(true)
+      expect(res.category).toBe('ANAPHYLAXIS')
+    })
+    it('detects "anaphylaxis"', () => {
+      const res = detectEmergency('Help me, having anaphylaxis after bee sting')
+      expect(res.isEmergency).toBe(true)
+      expect(res.category).toBe('ANAPHYLAXIS')
+    })
   })
 
   // 3. Separate Crisis Category for Self-Harm or Suicidal Wording

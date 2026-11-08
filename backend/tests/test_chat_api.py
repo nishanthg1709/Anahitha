@@ -95,6 +95,18 @@ def test_chat_seizure_and_stroke_emergency(mock_gemini):
     mock_gemini.assert_not_called()
 
 @patch("main.generate_companion_reply")
+def test_chat_anaphylaxis_emergency(mock_gemini):
+    response = client.post(
+        "/api/chat",
+        json={"message": "I accidentally ate peanuts and my throat is closing up", "mode": "chat"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["emergency"] is True
+    assert data["category"] == "ANAPHYLAXIS"
+    mock_gemini.assert_not_called()
+
+@patch("main.generate_companion_reply")
 def test_chat_crisis_self_harm_category(mock_gemini):
     """
     Self-harm or suicidal wording must return the exact caring message with 112
@@ -157,6 +169,30 @@ def test_chat_gemini_failure_graceful_recovery(mock_client_class):
     assert data["emergency"] is False
     assert "Dr. Anahitha is temporarily unable to connect" in data["reply"]
     assert "AI generation error" in data["error"]
+
+@patch("app.chat_service.genai.Client")
+def test_chat_gemini_fallback_flow(mock_client_class):
+    """
+    If primary model throws 503/504, it invokes fallback model and returns its response.
+    """
+    primary_client = MagicMock()
+    fallback_client = MagicMock()
+    primary_client.models.generate_content.side_effect = Exception("503 UNAVAILABLE: high demand")
+    fb_response = MagicMock()
+    fb_response.text = "Here are some tips to sleep better from the fallback companion."
+    fallback_client.models.generate_content.return_value = fb_response
+
+    mock_client_class.side_effect = [primary_client, fallback_client]
+
+    response = client.post(
+        "/api/chat",
+        json={"message": "What are some tips to sleep better?", "mode": "wellness"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["emergency"] is False
+    assert "Here are some tips to sleep better from the fallback companion." in data["reply"]
+    assert data["error"] is None
 
 # --- 4. Rate Limiting Tests (20 requests per minute per IP) ---
 

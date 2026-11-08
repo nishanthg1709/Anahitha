@@ -5,7 +5,7 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from app.config import ALLOWED_CORS_ORIGINS, is_gemini_api_key_set, get_gemini_model
+from app.config import ALLOWED_CORS_ORIGINS, is_gemini_api_key_set, get_gemini_model, get_gemini_fallback_model
 from app.limiter import rate_limiter
 from app.healthcare.emergency import detect_emergency, EmergencyCheckResult
 from app.chat_service import generate_companion_reply
@@ -20,6 +20,8 @@ async def lifespan(app: FastAPI):
     key_is_set = is_gemini_api_key_set()
     logger.info(f"Startup: GEMINI_API_KEY set: {key_is_set}")
     logger.info(f"Startup: GEMINI_MODEL: {get_gemini_model()}")
+    fallback = get_gemini_fallback_model()
+    logger.info(f"Startup: GEMINI_FALLBACK_MODEL: {fallback if fallback else '(disabled)'}")
     yield
 
 app = FastAPI(

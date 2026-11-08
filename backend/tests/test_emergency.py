@@ -36,6 +36,13 @@ def test_stroke_emergency():
     assert "These symptoms can be a sign of a serious emergency. Call 112 now." in result.urgent_guidance
     assert "stroke" not in result.urgent_guidance.lower()
 
+def test_anaphylaxis_emergency():
+    query = "I accidentally ate peanuts and my throat is closing up"
+    result = detect_emergency(query)
+    assert result.is_emergency is True
+    assert result.category == "ANAPHYLAXIS"
+    assert "These symptoms can be a sign of a serious emergency. Call 112 now." in result.urgent_guidance
+
 def test_self_harm_emergency():
     query = "I feel hopeless and I want to end my life"
     result = detect_emergency(query)

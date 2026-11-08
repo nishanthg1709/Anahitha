@@ -6,11 +6,15 @@ from dotenv import load_dotenv
 ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
-# Free-tier Gemini model constant
+# Free-tier Gemini model constants
 DEFAULT_GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 
 def get_gemini_model() -> str:
     return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL).strip()
+
+def get_gemini_fallback_model() -> str:
+    """Optional fallback model name; returns empty string if not set."""
+    return os.getenv("GEMINI_FALLBACK_MODEL", "").strip()
 
 # Never print or log the key!
 def get_gemini_api_key() -> str:

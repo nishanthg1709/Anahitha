@@ -55,3 +55,4 @@ export default function CompanionCanvas({ isThinking = false }) {
     </div>
   )
 }
+

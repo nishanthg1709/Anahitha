@@ -117,6 +117,14 @@ EMERGENCY_RULES: Dict[str, Dict] = {
         ],
         "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
+    "ANAPHYLAXIS": {
+        "patterns": [
+            re.compile(r"\b(?:throat\s+(?:is\s+)?closing(?:\s+up)?|airway\s+closing)\b", re.IGNORECASE),
+            re.compile(r"\b(?:anaphylax(?:is|ic)|severe\s+allergic\s+reaction)\b", re.IGNORECASE),
+            re.compile(r"\b(?:swollen\s+tongue|tongue\s+is\s+swelling)\b", re.IGNORECASE),
+        ],
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
+    },
 }
 
 def detect_emergency(text: str) -> EmergencyCheckResult:

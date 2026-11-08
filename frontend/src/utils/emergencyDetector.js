@@ -104,6 +104,14 @@ const EMERGENCY_CATEGORIES = [
       /\bconvulsion[s]?\b/i,
     ],
   },
+  {
+    category: 'ANAPHYLAXIS',
+    terms: [
+      /\b(?:throat\s+(?:is\s+)?closing(?:\s+up)?|airway\s+closing)\b/i,
+      /\b(?:anaphylax(?:is|ic)|severe\s+allergic\s+reaction)\b/i,
+      /\b(?:swollen\s+tongue|tongue\s+is\s+swelling)\b/i,
+    ],
+  },
 ]
 
 /**
