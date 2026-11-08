@@ -3,13 +3,13 @@ from typing import Optional, List, Dict
 from pydantic import BaseModel, Field
 
 CRISIS_CARING_MESSAGE = (
+    "I'm really sorry you're going through this, and I'm glad you told me. You don't have to face it alone. "
     "Please contact your local emergency number (112 in India) or a trusted person right now."
 )
 
-GENERAL_EMERGENCY_GUIDANCE = (
-    "CRITICAL HEALTH ALERT: Potential acute medical emergency detected. "
-    "Please stop physical exertion and CALL 112 (or your local emergency number) IMMEDIATELY. "
-    "ANAHITHA is an AI companion and CANNOT contact emergency services or dispatch help for you."
+EMERGENCY_SERIOUS_GUIDANCE = (
+    "These symptoms can be a sign of a serious emergency. Call 112 now. "
+    "ANAHITHA cannot contact emergency services or dispatch help for you."
 )
 
 class EmergencyCheckResult(BaseModel):
@@ -44,7 +44,7 @@ CRISIS_PATTERNS = [
     re.compile(r"\bbetter\s+off\s+dead\b", re.IGNORECASE),
 ]
 
-# Critical medical conditions matching frontend rules
+# Critical medical conditions matching frontend rules (NO condition names in response messages)
 EMERGENCY_RULES: Dict[str, Dict] = {
     "RESPIRATORY": {
         "patterns": [
@@ -55,11 +55,7 @@ EMERGENCY_RULES: Dict[str, Dict] = {
             re.compile(r"\b(?:choking|suffocating)\b", re.IGNORECASE),
             re.compile(r"\blips\s+(?:are\s+)?turning\s+blue\b", re.IGNORECASE),
         ],
-        "guidance": (
-            "CRITICAL HEALTH ALERT: Severe difficulty breathing is a medical emergency. "
-            "Please sit upright to keep your airway open and CALL 112 IMMEDIATELY. "
-            "ANAHITHA cannot contact emergency services or dispatch help for you."
-        ),
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
     "CARDIAC": {
         "patterns": [
@@ -70,11 +66,7 @@ EMERGENCY_RULES: Dict[str, Dict] = {
             re.compile(r"\bpain\s+radiating\s+to\s+(?:my\s+)?(?:left\s+arm|arm|jaw|neck)\b", re.IGNORECASE),
             re.compile(r"\bcardiac\s+arrest\b", re.IGNORECASE),
         ],
-        "guidance": (
-            "CRITICAL HEALTH ALERT: Your symptoms may indicate a cardiac emergency (such as a heart attack). "
-            "Please stop physical exertion, sit down comfortably, and CALL 112 IMMEDIATELY. "
-            "ANAHITHA cannot contact emergency services or dispatch help for you."
-        ),
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
     "UNCONSCIOUSNESS": {
         "patterns": [
@@ -85,11 +77,7 @@ EMERGENCY_RULES: Dict[str, Dict] = {
             re.compile(r"\bnot\s+waking\s+up\b", re.IGNORECASE),
             re.compile(r"\bloss\s+of\s+consciousness\b", re.IGNORECASE),
         ],
-        "guidance": (
-            "CRITICAL HEALTH ALERT: Unconsciousness or unresponsiveness requires urgent emergency intervention. "
-            "Check for normal breathing and CALL 112 IMMEDIATELY. "
-            "ANAHITHA cannot contact emergency services or dispatch help for you."
-        ),
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
     "SEVERE_BLEEDING": {
         "patterns": [
@@ -100,11 +88,7 @@ EMERGENCY_RULES: Dict[str, Dict] = {
             re.compile(r"\bhemorrhag(?:e|ing)\b", re.IGNORECASE),
             re.compile(r"\blosing\s+a\s+lot\s+of\s+blood\b", re.IGNORECASE),
         ],
-        "guidance": (
-            "CRITICAL HEALTH ALERT: Continuous, uncontrolled bleeding is life-threatening. "
-            "Apply direct, firm pressure with a clean cloth to the wound and CALL 112 IMMEDIATELY. "
-            "ANAHITHA cannot contact emergency services or dispatch help for you."
-        ),
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
     "STROKE": {
         "patterns": [
@@ -114,11 +98,7 @@ EMERGENCY_RULES: Dict[str, Dict] = {
             re.compile(r"\bsudden\s+numbness\s+on\s+one\s+side\b", re.IGNORECASE),
             re.compile(r"\b(?:cannot|can't)\s+(?:move|lift)\s+(?:my\s+)?(?:arm|leg)\b", re.IGNORECASE),
         ],
-        "guidance": (
-            "CRITICAL HEALTH ALERT: You may be describing signs of a stroke (FAST: Face drooping, Arm weakness, Speech difficulty). "
-            "Every minute counts. CALL 112 IMMEDIATELY. "
-            "ANAHITHA cannot contact emergency services or dispatch help for you."
-        ),
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
     "POISONING": {
         "patterns": [
@@ -127,11 +107,7 @@ EMERGENCY_RULES: Dict[str, Dict] = {
             re.compile(r"\btook\s+too\s+many\s+(?:pills|medications|tablets)\b", re.IGNORECASE),
             re.compile(r"\bpoisoning\b", re.IGNORECASE),
         ],
-        "guidance": (
-            "CRITICAL HEALTH ALERT: Suspected poisoning or medication overdose requires immediate emergency treatment. "
-            "CALL 112 IMMEDIATELY. Do not induce vomiting unless advised by an emergency professional. "
-            "ANAHITHA cannot contact emergency services or dispatch help for you."
-        ),
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
     "SEIZURE": {
         "patterns": [
@@ -139,11 +115,7 @@ EMERGENCY_RULES: Dict[str, Dict] = {
             re.compile(r"\bhaving\s+(?:a\s+)?(?:seizure|seizures|fit|convulsion[s]?)\b", re.IGNORECASE),
             re.compile(r"\bconvulsion[s]?\b", re.IGNORECASE),
         ],
-        "guidance": (
-            "CRITICAL HEALTH ALERT: Active seizure requires prompt medical assessment. "
-            "Clear hard objects away, protect the head, and CALL 112 IMMEDIATELY if it lasts over 5 minutes or is a first seizure. "
-            "ANAHITHA cannot contact emergency services or dispatch help for you."
-        ),
+        "guidance": EMERGENCY_SERIOUS_GUIDANCE,
     },
 }
 
@@ -151,6 +123,7 @@ def detect_emergency(text: str) -> EmergencyCheckResult:
     """
     Python rule-based detector mirroring frontend safety rules.
     Safety bias: when in doubt, trigger.
+    Never names a condition in the emergency message.
     Must always run BEFORE any Gemini API call.
     """
     if not text or not text.strip():
@@ -165,7 +138,6 @@ def detect_emergency(text: str) -> EmergencyCheckResult:
     if not has_first_person_symptom:
         for pattern, term in NON_MEDICAL_SUPPRESSIONS:
             if pattern.search(clean_text):
-                # Suppress only if no other physical emergency pattern is present
                 text_without_idiom = pattern.sub(" ", clean_text)
                 has_other = any(
                     any(p.search(text_without_idiom) for p in group["patterns"])
@@ -190,7 +162,7 @@ def detect_emergency(text: str) -> EmergencyCheckResult:
                 urgent_guidance=CRISIS_CARING_MESSAGE,
             )
 
-    # 3. Medical Emergency Categories
+    # 3. Medical Emergency Categories (No condition names used)
     for category, config in EMERGENCY_RULES.items():
         matched = []
         for pattern in config["patterns"]:
@@ -212,4 +184,3 @@ def detect_emergency(text: str) -> EmergencyCheckResult:
         matched_triggers=[],
         urgent_guidance=None,
     )
-

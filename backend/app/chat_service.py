@@ -1,7 +1,10 @@
+import logging
 from typing import Tuple, Optional
 from google import genai
 from google.genai import types
-from app.config import DEFAULT_GEMINI_MODEL, get_gemini_api_key
+from app.config import get_gemini_model, get_gemini_api_key
+
+logger = logging.getLogger("anahitha.chat")
 
 # Persona & Core System Prompt
 BASE_SYSTEM_INSTRUCTION = (
@@ -41,19 +44,24 @@ def generate_companion_reply(message: str, mode: str = "chat") -> Tuple[str, Opt
     """
     api_key = get_gemini_api_key()
     if not api_key:
+        logger.error("Gemini API call skipped: GEMINI_API_KEY is not configured")
         return (
             FRIENDLY_ERROR_MESSAGE,
             "GEMINI_API_KEY is not configured in backend/.env",
         )
 
+    primary_model = get_gemini_model()
     system_instruction = build_system_instruction(mode)
 
     try:
-        # Initialize Google GenAI client
-        client = genai.Client(api_key=api_key)
+        http_opts = types.HttpOptions(
+            timeout=12000,
+            retry_options=types.HttpRetryOptions(attempts=1),
+        )
+        client = genai.Client(api_key=api_key, http_options=http_opts)
 
         response = client.models.generate_content(
-            model=DEFAULT_GEMINI_MODEL,
+            model=primary_model,
             contents=message,
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
@@ -64,13 +72,52 @@ def generate_companion_reply(message: str, mode: str = "chat") -> Tuple[str, Opt
 
         reply = getattr(response, "text", "") or ""
         if not reply.strip():
-            return (FRIENDLY_ERROR_MESSAGE, "Empty response received from AI model")
+            logger.error("Gemini API returned an empty text response")
+            return (FRIENDLY_ERROR_MESSAGE, "Empty response from AI model")
 
         return (reply.strip(), None)
 
     except Exception as exc:
-        # Never crash; return safe fallback response
-        # Do not log or leak API keys or secrets
-        error_type = type(exc).__name__
-        return (FRIENDLY_ERROR_MESSAGE, f"AI generation error ({error_type})")
+        err_type = type(exc).__name__
+        status_code = getattr(exc, "code", getattr(exc, "status_code", "Unknown"))
+        short_msg = str(exc)[:200]
 
+        # Ensure no key is ever in the message
+        if api_key and api_key in short_msg:
+            short_msg = short_msg.replace(api_key, "[REDACTED]")
+
+        # Log ONLY error type, HTTP status, and short message to server console
+        logger.error(
+            f"Gemini API call failed: error_type={err_type}, status={status_code}, message={short_msg}"
+        )
+
+        # If primary model is unavailable or timing out, attempt free-tier fallback (gemini-3.5-flash)
+        if primary_model != "gemini-3.5-flash" and (
+            "503" in str(exc)
+            or "504" in str(exc)
+            or "UNAVAILABLE" in str(exc)
+            or "DEADLINE" in str(exc)
+            or "timed out" in str(exc).lower()
+            or "timeout" in err_type.lower()
+        ):
+            try:
+                logger.info("Attempting fallback to available free-tier model gemini-3.5-flash...")
+                fallback_resp = client.models.generate_content(
+                    model="gemini-3.5-flash",
+                    contents=message,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        temperature=0.7,
+                        max_output_tokens=800,
+                    ),
+                )
+                fb_text = getattr(fallback_resp, "text", "") or ""
+                if fb_text.strip():
+                    return (fb_text.strip(), None)
+            except Exception as fb_exc:
+                fb_status = getattr(fb_exc, "code", getattr(fb_exc, "status_code", "Unknown"))
+                logger.error(
+                    f"Fallback model call failed: error_type={type(fb_exc).__name__}, status={fb_status}"
+                )
+
+        return (FRIENDLY_ERROR_MESSAGE, f"AI generation error ({err_type})")

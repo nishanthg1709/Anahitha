@@ -1,17 +1,32 @@
+import logging
+from contextlib import asynccontextmanager
 from typing import Optional, List, Literal
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from app.config import ALLOWED_CORS_ORIGINS
+from app.config import ALLOWED_CORS_ORIGINS, is_gemini_api_key_set, get_gemini_model
 from app.limiter import rate_limiter
 from app.healthcare.emergency import detect_emergency, EmergencyCheckResult
 from app.chat_service import generate_companion_reply
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger = logging.getLogger("anahitha.main")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Log once at startup whether GEMINI_API_KEY is set (true/false only)
+    key_is_set = is_gemini_api_key_set()
+    logger.info(f"Startup: GEMINI_API_KEY set: {key_is_set}")
+    logger.info(f"Startup: GEMINI_MODEL: {get_gemini_model()}")
+    yield
 
 app = FastAPI(
     title="Anahitha Healthcare AI Backend",
     version="0.2.0",
     description="Backend service for Anahitha with deterministic clinical safety guardrails and Gemini chat",
+    lifespan=lifespan,
 )
 
 # CORS restricted strictly to frontend origins
@@ -82,7 +97,7 @@ def chat_endpoint(req: ChatRequest, request: Request):
     emergency_result = detect_emergency(req.message)
     if emergency_result.is_emergency:
         return ChatResponse(
-            reply=emergency_result.urgent_guidance or "Immediate medical emergency detected. Please call 112.",
+            reply=emergency_result.urgent_guidance or "These symptoms can be a sign of a serious emergency. Call 112 now.",
             emergency=True,
             category=emergency_result.category,
             urgent_guidance=emergency_result.urgent_guidance,

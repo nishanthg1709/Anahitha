@@ -27,7 +27,8 @@ def test_chat_mandatory_heart_attack_narrative_override(mock_gemini):
     data = response.json()
     assert data["emergency"] is True
     assert data["category"] == "CARDIAC"
-    assert "112" in data["reply"]
+    assert "These symptoms can be a sign of a serious emergency. Call 112 now." in data["reply"]
+    assert "heart attack" not in data["reply"]
     mock_gemini.assert_not_called()
 
 @patch("main.generate_companion_reply")
@@ -107,7 +108,8 @@ def test_chat_crisis_self_harm_category(mock_gemini):
     data = response.json()
     assert data["emergency"] is True
     assert data["category"] == "CRISIS_SELF_HARM"
-    assert "Please contact your local emergency number (112 in India) or a trusted person right now." in data["reply"]
+    assert data["reply"].startswith("I'm really sorry you're going through this, and I'm glad you told me. You don't have to face it alone.")
+    assert data["reply"].endswith("Please contact your local emergency number (112 in India) or a trusted person right now.")
     mock_gemini.assert_not_called()
 
 # --- 2. Suppression & Successful Non-Emergency Chat with Mocked Gemini ---

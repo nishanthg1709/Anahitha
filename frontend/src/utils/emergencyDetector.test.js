@@ -8,6 +8,8 @@ describe('emergencyDetector (Safety-Biased Rule-Based Screener)', () => {
       const res = detectEmergency('I read about heart attacks and now my chest hurts')
       expect(res.isEmergency).toBe(true)
       expect(res.category).toBe('CARDIAC')
+      expect(res.guidanceMessage).toBe('These symptoms can be a sign of a serious emergency. Call 112 now. ANAHITHA cannot contact emergency services or dispatch help for you.')
+      expect(res.guidanceMessage).not.toContain('heart attack')
     })
 
     it('triggers on "my father is unresponsive"', () => {
@@ -175,6 +177,7 @@ describe('emergencyDetector (Safety-Biased Rule-Based Screener)', () => {
       expect(res.isEmergency).toBe(true)
       expect(res.category).toBe('CRISIS_SELF_HARM')
       expect(res.guidanceMessage).toBe(CRISIS_CARING_MESSAGE)
+      expect(res.guidanceMessage).toContain("I'm really sorry you're going through this, and I'm glad you told me. You don't have to face it alone.")
       expect(res.guidanceMessage).toContain('Please contact your local emergency number (112 in India) or a trusted person right now.')
     })
 
