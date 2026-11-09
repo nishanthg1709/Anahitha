@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import LandingPage from './pages/LandingPage'
-import ChatPlaceholder from './pages/ChatPlaceholder'
+import ChatPage from './pages/ChatPage'
 import EmergencyPage from './pages/EmergencyPage'
 import FloatingEmergencyButton from './components/FloatingEmergencyButton'
 
@@ -12,7 +12,7 @@ export default function App() {
 
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/chat" element={<ChatPlaceholder />} />
+        <Route path="/chat" element={<ChatPage />} />
         <Route path="/emergency" element={<EmergencyPage />} />
         <Route path="*" element={<LandingPage />} />
       </Routes>
