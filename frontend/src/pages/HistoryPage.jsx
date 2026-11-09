@@ -7,9 +7,12 @@ import {
   ShieldCheck,
   AlertTriangle,
   PhoneCall,
-  RotateCcw,
+  Trash2,
+  ChevronDown,
+  ChevronUp,
   Bot,
   User,
+  CheckCircle2,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 
@@ -18,35 +21,74 @@ export default function HistoryPage() {
   const [historyData, setHistoryData] = useState([])
   const [loading, setLoading] = useState(true)
   const [errorMsg, setErrorMsg] = useState(null)
+  const [successMsg, setSuccessMsg] = useState(null)
+  const [expandedId, setExpandedId] = useState(null)
+  const [deletingId, setDeletingId] = useState(null)
+
+  const fetchHistory = async () => {
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      const token = session?.access_token || 'mock-dev-token'
+      const response = await fetch('http://127.0.0.1:8000/api/chat/history', {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Server returned HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      setHistoryData(data.conversations || [])
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not load conversation history.')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    const fetchHistory = async () => {
-      setLoading(true)
-      setErrorMsg(null)
-      try {
-        const token = session?.access_token || 'mock-dev-token'
-        const response = await fetch('http://127.0.0.1:8000/api/chat/history', {
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`,
-          },
-        })
-
-        if (!response.ok) {
-          throw new Error(`Server returned HTTP ${response.status}`)
-        }
-
-        const data = await response.json()
-        setHistoryData(data.conversations || [])
-      } catch (err) {
-        setErrorMsg(err.message || 'Could not load conversation history.')
-      } finally {
-        setLoading(false)
-      }
-    }
-
     fetchHistory()
   }, [session])
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (!window.confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
+      return
+    }
+
+    setDeletingId(conversationId)
+    setErrorMsg(null)
+    setSuccessMsg(null)
+    try {
+      const token = session?.access_token || 'mock-dev-token'
+      const response = await fetch(`http://127.0.0.1:8000/api/chat/conversations/${conversationId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Delete failed (HTTP ${response.status})`)
+      }
+
+      setHistoryData((prev) => prev.filter((c) => c.id !== conversationId))
+      setSuccessMsg('Conversation successfully deleted.')
+      setTimeout(() => setSuccessMsg(null), 4000)
+    } catch (err) {
+      setErrorMsg(err.message || 'Could not delete conversation.')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const toggleExpand = (id) => {
+    setExpandedId((prev) => (prev === id ? null : id))
+  }
 
   return (
     <div className="min-h-screen bg-[#FAF8FD] text-plum font-sans flex flex-col justify-between">
@@ -97,14 +139,23 @@ export default function HistoryPage() {
           </span>
         </div>
 
+        {successMsg && (
+          <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-medium flex items-center space-x-2">
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
+            <span>{successMsg}</span>
+          </div>
+        )}
+
+        {errorMsg && (
+          <div className="p-4 rounded-xl bg-red-50 border border-emergency-red/30 text-emergency-red text-xs space-y-1">
+            <p className="font-semibold">Notice</p>
+            <p>{errorMsg}</p>
+          </div>
+        )}
+
         {loading ? (
           <div className="p-8 text-center text-xs text-plum/60 animate-pulse">
             Loading your conversation history...
-          </div>
-        ) : errorMsg ? (
-          <div className="p-6 rounded-2xl bg-red-50 border border-emergency-red/30 text-emergency-red text-xs space-y-2">
-            <p className="font-semibold">Unable to load history</p>
-            <p>{errorMsg}</p>
           </div>
         ) : historyData.length === 0 ? (
           <div className="bg-white rounded-3xl p-10 text-center border border-lavender/60 space-y-3">
@@ -126,47 +177,80 @@ export default function HistoryPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {historyData.map((conv) => (
-              <div
-                key={conv.id}
-                className="bg-white rounded-2xl border border-lavender/60 p-5 shadow-xs space-y-3"
-              >
-                <div className="flex items-center justify-between border-b border-lavender/40 pb-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-semibold text-sm text-plum">{conv.title || 'Conversation'}</span>
-                    <span className="text-[10px] uppercase font-bold bg-lavender-light px-2 py-0.5 rounded text-plum/70">
-                      {conv.mode || 'chat'}
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-plum/50">
-                    {new Date(conv.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-                  </span>
-                </div>
+            {historyData.map((conv) => {
+              const isExpanded = expandedId === conv.id
+              const messageCount = conv.messages ? conv.messages.length : 0
 
-                {/* Messages in this conversation */}
-                <div className="space-y-2.5 pt-1">
-                  {(conv.messages || []).map((m, idx) => {
-                    const isUser = m.sender === 'user'
-                    return (
-                      <div
-                        key={idx}
-                        className={`p-3 rounded-xl text-xs leading-relaxed ${
-                          isUser
-                            ? 'bg-blush/60 border border-rose/30 text-plum ml-6'
-                            : 'bg-[#FAF8FD] border border-lavender/60 text-plum mr-6'
-                        }`}
+              return (
+                <div
+                  key={conv.id}
+                  className="bg-white rounded-2xl border border-lavender/60 p-5 shadow-xs space-y-3 transition-all"
+                >
+                  <div className="flex items-center justify-between border-b border-lavender/40 pb-3 gap-2">
+                    <div className="flex items-center space-x-2 flex-grow min-w-0">
+                      <span className="font-semibold text-sm text-plum truncate">{conv.title || 'Conversation'}</span>
+                      <span className="text-[10px] uppercase font-bold bg-lavender-light px-2 py-0.5 rounded text-plum/70 shrink-0">
+                        {conv.mode || 'chat'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center space-x-2 shrink-0">
+                      <span className="text-[11px] text-plum/50 hidden sm:inline">
+                        {new Date(conv.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+
+                      {/* Open / Toggle View Button */}
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(conv.id)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-lavender-light/60 hover:bg-lavender-light text-plum flex items-center space-x-1 cursor-pointer"
+                        aria-label={isExpanded ? 'Collapse conversation' : 'Open conversation'}
                       >
-                        <div className="flex items-center space-x-1.5 text-[10px] font-bold text-plum/60 mb-1">
-                          {isUser ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3 text-rose" />}
-                          <span>{isUser ? 'You' : 'Dr. Anahitha'}</span>
-                        </div>
-                        <p className="whitespace-pre-wrap">{m.content}</p>
-                      </div>
-                    )
-                  })}
+                        <span>{isExpanded ? 'Close' : `Open (${messageCount})`}</span>
+                        {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+
+                      {/* Delete Conversation Button */}
+                      <button
+                        type="button"
+                        disabled={deletingId === conv.id}
+                        onClick={() => handleDeleteConversation(conv.id)}
+                        className="p-1.5 text-xs text-plum/40 hover:text-emergency-red rounded-lg hover:bg-red-50 transition-colors cursor-pointer"
+                        title="Delete this conversation"
+                        aria-label="Delete conversation"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Expanded Message View */}
+                  {isExpanded && (
+                    <div className="space-y-2.5 pt-2 border-t border-lavender/20">
+                      {(conv.messages || []).map((m, idx) => {
+                        const isUser = m.sender === 'user'
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-xl text-xs leading-relaxed ${
+                              isUser
+                                ? 'bg-blush/60 border border-rose/30 text-plum ml-6'
+                                : 'bg-[#FAF8FD] border border-lavender/60 text-plum mr-6'
+                            }`}
+                          >
+                            <div className="flex items-center space-x-1.5 text-[10px] font-bold text-plum/60 mb-1">
+                              {isUser ? <User className="w-3 h-3" /> : <Bot className="w-3 h-3 text-rose" />}
+                              <span>{isUser ? 'You' : 'Dr. Anahitha'}</span>
+                            </div>
+                            <p className="whitespace-pre-wrap">{m.content}</p>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </main>

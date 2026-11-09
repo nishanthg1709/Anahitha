@@ -67,6 +67,9 @@ class ChatResponse(BaseModel):
     note: Optional[str] = None
     error: Optional[str] = None
 
+class ProfileUpdateRequest(BaseModel):
+    display_name: str = Field(..., min_length=1, max_length=100)
+
 # --- Endpoints ---
 
 @app.get("/api/health", response_model=HealthResponse)
@@ -153,3 +156,45 @@ def get_chat_history_endpoint(request: Request):
     user = get_required_user(request)
     conversations = db.get_user_chat_history(user["id"])
     return {"conversations": conversations}
+
+@app.delete("/api/chat/conversations/{conversation_id}")
+def delete_conversation_endpoint(conversation_id: str, request: Request):
+    """
+    Deletes a specific conversation and its messages.
+    Enforces RLS: User can only delete their own conversation.
+    """
+    user = get_required_user(request)
+    success = db.delete_conversation(user["id"], conversation_id)
+    if not success:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail="Conversation not found or unauthorized")
+    return {"status": "ok", "message": "Conversation deleted successfully"}
+
+@app.delete("/api/user/data")
+def delete_user_data_endpoint(request: Request):
+    """
+    Deletes all saved conversations, messages, and profile data for the authenticated user.
+    """
+    user = get_required_user(request)
+    deleted_count = db.delete_user_data(user["id"])
+    return {
+        "status": "ok",
+        "deleted_conversations": deleted_count,
+        "message": "All user data deleted successfully",
+    }
+
+@app.get("/api/user/profile")
+def get_user_profile_endpoint(request: Request):
+    """
+    Retrieves the authenticated user's profile.
+    """
+    user = get_required_user(request)
+    return db.get_user_profile(user["id"], default_email=user.get("email", ""))
+
+@app.put("/api/user/profile")
+def update_user_profile_endpoint(req: ProfileUpdateRequest, request: Request):
+    """
+    Updates the authenticated user's profile display name.
+    """
+    user = get_required_user(request)
+    return db.update_user_profile(user["id"], display_name=req.display_name)

@@ -12,12 +12,14 @@ class ChatDatabase:
     """
 
     def __init__(self):
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         # Storage structures
         # conversations: { conv_id: { "id": str, "user_id": str, "title": str, "mode": str, "created_at": str } }
         self._conversations: Dict[str, Dict[str, Any]] = {}
         # messages: list of dicts with conversation_id, user_id, sender, content, is_emergency, mode, created_at
         self._messages: List[Dict[str, Any]] = []
+        # profiles: { user_id: { "id": str, "display_name": str, "email": str, "created_at": str } }
+        self._profiles: Dict[str, Dict[str, Any]] = {}
 
     def save_chat_message(
         self,
@@ -117,6 +119,56 @@ class ChatDatabase:
 
             return result
 
+    def delete_conversation(self, user_id: str, conversation_id: str) -> bool:
+        """
+        Deletes a specific conversation and its associated messages.
+        Enforces Row Level Security: Returns False if the conversation does not belong to user_id.
+        """
+        if not user_id or not conversation_id:
+            return False
+
+        with self._lock:
+            conv = self._conversations.get(conversation_id)
+            if not conv:
+                return False
+            if conv["user_id"] != user_id:
+                # RLS: Cannot delete another user's conversation
+                return False
+
+            del self._conversations[conversation_id]
+            self._messages = [
+                m for m in self._messages
+                if m["conversation_id"] != conversation_id
+            ]
+            return True
+
+    def get_user_profile(self, user_id: str, default_email: str = "") -> Dict[str, Any]:
+        """
+        Returns profile for user_id.
+        """
+        with self._lock:
+            if user_id not in self._profiles:
+                now_iso = datetime.now(timezone.utc).isoformat()
+                self._profiles[user_id] = {
+                    "id": user_id,
+                    "email": default_email,
+                    "display_name": default_email.split("@")[0] if "@" in default_email else "User",
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                }
+            return dict(self._profiles[user_id])
+
+    def update_user_profile(self, user_id: str, display_name: str) -> Dict[str, Any]:
+        """
+        Updates profile display name.
+        """
+        with self._lock:
+            profile = self.get_user_profile(user_id)
+            profile["display_name"] = display_name.strip()
+            profile["updated_at"] = datetime.now(timezone.utc).isoformat()
+            self._profiles[user_id] = profile
+            return dict(profile)
+
     def delete_user_data(self, user_id: str) -> int:
         """
         Deletes all conversations and messages belonging to user_id.
@@ -134,6 +186,11 @@ class ChatDatabase:
                 cid: c for cid, c in self._conversations.items()
                 if c["user_id"] != user_id
             }
+
+            # Delete profile
+            if user_id in self._profiles:
+                del self._profiles[user_id]
+
             return initial_count - len(self._conversations)
 
     def total_stored_messages(self) -> int:
@@ -145,6 +202,7 @@ class ChatDatabase:
         with self._lock:
             self._conversations.clear()
             self._messages.clear()
+            self._profiles.clear()
 
 # Global database instance
 db = ChatDatabase()

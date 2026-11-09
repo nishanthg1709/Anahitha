@@ -7,6 +7,9 @@ import LoginPage from './pages/LoginPage'
 import SignupPage from './pages/SignupPage'
 import DashboardPage from './pages/DashboardPage'
 import HistoryPage from './pages/HistoryPage'
+import ProfilePage from './pages/ProfilePage'
+import SettingsPage from './pages/SettingsPage'
+import PrivacyPage from './pages/PrivacyPage'
 import ProtectedRoute from './components/ProtectedRoute'
 import FloatingEmergencyButton from './components/FloatingEmergencyButton'
 
@@ -23,6 +26,7 @@ export default function App() {
           <Route path="/emergency" element={<EmergencyPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/signup" element={<SignupPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route
             path="/dashboard"
             element={
@@ -36,6 +40,22 @@ export default function App() {
             element={
               <ProtectedRoute>
                 <HistoryPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <ProfilePage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <SettingsPage />
               </ProtectedRoute>
             }
           />
