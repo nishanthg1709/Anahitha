@@ -36,8 +36,13 @@ def get_supabase_jwt_secret() -> str:
 def is_supabase_configured() -> bool:
     return bool(get_supabase_url() and get_supabase_anon_key())
 
-# Allowed CORS origins
-ALLOWED_CORS_ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+from typing import List
+
+# Allowed CORS origins (read from environment variable, falling back to http://localhost:5173)
+def get_allowed_cors_origins() -> List[str]:
+    raw = os.getenv("ALLOWED_CORS_ORIGINS", "").strip()
+    if raw:
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+ALLOWED_CORS_ORIGINS = get_allowed_cors_origins()

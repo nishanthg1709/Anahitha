@@ -13,11 +13,14 @@ class InMemoryRateLimiter:
         self.ip_history = defaultdict(list)
 
     def check_rate_limit(self, request: Request):
-        # Extract IP address
-        client_ip = (
-            request.headers.get("x-forwarded-for", "").split(",")[0].strip()
-            or (request.client.host if request.client else "unknown")
-        )
+        # Extract real client IP address, supporting X-Forwarded-For behind reverse proxies
+        xff = request.headers.get("x-forwarded-for", "").strip()
+        if xff:
+            client_ip = xff.split(",")[0].strip()
+        elif request.client and request.client.host:
+            client_ip = request.client.host.strip()
+        else:
+            client_ip = "unknown"
 
         now = time.time()
         window_start = now - self.window_seconds
