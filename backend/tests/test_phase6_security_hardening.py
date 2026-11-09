@@ -17,40 +17,67 @@ def reset_limiter():
 
 # 1. Reverse Proxy Rate Limiting with X-Forwarded-For
 @patch("main.generate_companion_reply", return_value=("Mock response for rate limit test", None))
-def test_rate_limiting_with_proxied_ip_header(mock_reply):
+def test_rate_limiting_with_trusted_proxy_header(mock_reply):
     """
-    Simulates a proxied attacker sending requests with X-Forwarded-For.
-    Verifies that the 21st request is rejected with HTTP 429.
-    Verifies that a different proxied client IP remains unaffected.
+    When TRUSTED_PROXY=true, the rate limiter trusts X-Forwarded-For.
+    Verifies that the 21st request from a proxied IP is rejected with HTTP 429,
+    while a different proxied client IP remains unaffected.
     """
     attacker_headers = {"x-forwarded-for": "203.0.113.195, 198.51.100.1"}
     innocent_headers = {"x-forwarded-for": "198.51.100.50"}
 
-    # Attacker fires 20 requests within rate limit
-    for i in range(20):
-        resp = client.post(
+    with patch.dict(os.environ, {"TRUSTED_PROXY": "true"}):
+        # Attacker fires 20 requests within rate limit
+        for i in range(20):
+            resp = client.post(
+                "/api/chat",
+                json={"message": f"Hello check {i}", "mode": "chat"},
+                headers=attacker_headers,
+            )
+            assert resp.status_code == 200, f"Request {i+1} failed with {resp.status_code}"
+
+        # 21st request from attacker gets HTTP 429
+        blocked_resp = client.post(
             "/api/chat",
-            json={"message": f"Hello check {i}", "mode": "chat"},
+            json={"message": "One more request", "mode": "chat"},
             headers=attacker_headers,
         )
-        assert resp.status_code == 200, f"Request {i+1} failed with {resp.status_code}"
+        assert blocked_resp.status_code == 429
+        assert "Rate limit exceeded" in blocked_resp.json()["detail"]
 
-    # 21st request from attacker gets HTTP 429
-    blocked_resp = client.post(
-        "/api/chat",
-        json={"message": "One more request", "mode": "chat"},
-        headers=attacker_headers,
-    )
-    assert blocked_resp.status_code == 429
-    assert "Rate limit exceeded" in blocked_resp.json()["detail"]
+        # Different proxied IP can still make requests successfully
+        innocent_resp = client.post(
+            "/api/chat",
+            json={"message": "Hello from an innocent user", "mode": "chat"},
+            headers=innocent_headers,
+        )
+        assert innocent_resp.status_code == 200
 
-    # Different proxied IP can still make requests successfully
-    innocent_resp = client.post(
-        "/api/chat",
-        json={"message": "Hello from an innocent user", "mode": "chat"},
-        headers=innocent_headers,
-    )
-    assert innocent_resp.status_code == 200
+@patch("main.generate_companion_reply", return_value=("Mock response for spoofing test", None))
+def test_spoofed_x_forwarded_for_cannot_bypass_limit_when_untrusted(mock_reply):
+    """
+    When TRUSTED_PROXY=false (the default), X-Forwarded-For MUST NOT be trusted.
+    An attacker spoofing random X-Forwarded-For headers from the same client IP
+    cannot bypass the rate limit and will still get HTTP 429 on the 21st request.
+    """
+    with patch.dict(os.environ, {"TRUSTED_PROXY": "false"}):
+        for i in range(20):
+            spoofed_headers = {"x-forwarded-for": f"198.51.100.{i+1}"}
+            resp = client.post(
+                "/api/chat",
+                json={"message": f"Spoof test {i}", "mode": "chat"},
+                headers=spoofed_headers,
+            )
+            assert resp.status_code == 200
+
+        # 21st request from the same client (even with yet another spoofed IP) must be blocked
+        blocked_resp = client.post(
+            "/api/chat",
+            json={"message": "21st request spoofing new IP", "mode": "chat"},
+            headers={"x-forwarded-for": "198.51.100.99"},
+        )
+        assert blocked_resp.status_code == 429
+        assert "Rate limit exceeded" in blocked_resp.json()["detail"]
 
 # 2. CORS Environment Variable Configuration
 def test_cors_origins_reads_env_and_fallbacks():

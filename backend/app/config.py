@@ -36,6 +36,10 @@ def get_supabase_jwt_secret() -> str:
 def is_supabase_configured() -> bool:
     return bool(get_supabase_url() and get_supabase_anon_key())
 
+def is_trusted_proxy_enabled() -> bool:
+    """Returns True if the backend is configured behind a trusted reverse proxy."""
+    return os.getenv("TRUSTED_PROXY", "false").strip().lower() == "true"
+
 from typing import List
 
 # Allowed CORS origins (read from environment variable, falling back to http://localhost:5173)

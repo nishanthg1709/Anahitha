@@ -102,3 +102,4 @@ def test_profile_endpoints_get_and_update():
     )
     assert put_resp.status_code == 200
     assert put_resp.json()["display_name"] == "Dr. Anahitha Fan"
+

@@ -1,6 +1,7 @@
 import time
 from collections import defaultdict
 from fastapi import Request, HTTPException, status
+from app.config import is_trusted_proxy_enabled
 
 class InMemoryRateLimiter:
     """
@@ -13,14 +14,21 @@ class InMemoryRateLimiter:
         self.ip_history = defaultdict(list)
 
     def check_rate_limit(self, request: Request):
-        # Extract real client IP address, supporting X-Forwarded-For behind reverse proxies
-        xff = request.headers.get("x-forwarded-for", "").strip()
-        if xff:
-            client_ip = xff.split(",")[0].strip()
-        elif request.client and request.client.host:
-            client_ip = request.client.host.strip()
+        # Only trust X-Forwarded-For if TRUSTED_PROXY is explicitly enabled in env (default: False)
+        if is_trusted_proxy_enabled():
+            xff = request.headers.get("x-forwarded-for", "").strip()
+            if xff:
+                client_ip = xff.split(",")[0].strip()
+            elif request.client and request.client.host:
+                client_ip = request.client.host.strip()
+            else:
+                client_ip = "unknown"
         else:
-            client_ip = "unknown"
+            # When proxy is untrusted, disregard X-Forwarded-For to prevent header spoofing attacks
+            if request.client and request.client.host:
+                client_ip = request.client.host.strip()
+            else:
+                client_ip = "unknown"
 
         now = time.time()
         window_start = now - self.window_seconds

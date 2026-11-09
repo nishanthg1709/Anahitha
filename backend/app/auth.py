@@ -82,3 +82,4 @@ def get_required_user(request: Request) -> Dict[str, Any]:
 
     token = auth_header.split(" ", 1)[1].strip()
     return decode_supabase_token(token)
+
