@@ -13,7 +13,7 @@ Rules: Zero-cost, privacy-first, safety-biased, strict emergency guardrails (112
 | **Phase 2** | Accounts and database (Supabase, env vars only) | **DONE** | Backend: 37/37, Frontend: 53/53, Build: Clean | SQL migrations with RLS, user isolation tested, guest chat stores nothing, protected routes. |
 | **Phase 3** | Knowledge base (RAG) | **PENDING: documents needed** | - | `knowledge_base/documents` empty; embeddings verified. |
 | **Phase 4** | Dashboard, history, privacy | **DONE** | Backend: 40/40, Frontend: 56/56, Build: Clean | Conversation history with deletion, profile editing, GDPR/data purge, plain-language privacy. |
-| **Phase 5** | English voice | **PENDING** | - | Web Speech API speech-to-text and text-to-speech. |
+| **Phase 5** | English voice | **DONE** | Backend: 40/40, Frontend: 62/62, Build: Clean | Web Speech API speech-to-text, text-to-speech, pre-AI emergency screening, silence on emergency. |
 | **Phase 6** | Security hardening | **PENDING** | - | Rate limiting, CORS env var, prompt injection tests, diagnosis check. |
 
 ---
@@ -110,4 +110,29 @@ Rules: Zero-cost, privacy-first, safety-biased, strict emergency guardrails (112
   - All 40 backend tests and 56 frontend tests passed. Frontend build clean.
 - **Problems encountered & resolutions**:
   - Discovered non-reentrant `threading.Lock` in `backend/app/database.py` that caused a deadlock when `update_user_profile` invoked `get_user_profile`. Replaced with `threading.RLock()`.
+
+### PHASE 5 - English voice
+- **Status**: **DONE**
+- **What was built**:
+  - Client-side Web Speech API integration in `frontend/src/pages/ChatPage.jsx` with zero external voice APIs and zero cost.
+  - Speech-to-text: Microphone button in chat input bar with active listening indicator (pulsing red/plum dot, animated wave, and `"Listening... speak clearly in English"` label).
+  - Browser compatibility fallback: If `SpeechRecognition` is unsupported (e.g. Firefox), renders polite note: *"Voice input isn't supported in this browser, but you can always type."* and does not break typing.
+  - Permission handling: If microphone permission is denied or blocked, displays polite warning: *"Microphone access was blocked. You can still type your message."*
+  - Pre-send voice emergency screening: Spoken transcripts run through `detectEmergency()` **BEFORE** sending or calling Gemini. If an emergency or crisis is detected, Gemini is never called, the emergency card and Call 112 button appear immediately, and speech synthesis is cancelled and never speaks emergency guidance aloud.
+  - Text-to-speech: Read Aloud button on regular assistant messages using `window.speechSynthesis` with English voice selection (`en-US`).
+  - Active playback controls: Stop button during speech synthesis to interrupt playback at any time.
+  - Emergency silence guarantee: Emergency cards and error cards NEVER render a speaker icon or TTS button.
+- **What was tested**:
+  - `frontend/src/pages/VoiceChat.test.jsx` (6 vitest tests):
+    - Graceful fallback note when SpeechRecognition is unavailable.
+    - Mic button rendering, start/stop toggle, and animated listening indicator.
+    - Microphone permission-denied error banner presentation.
+    - Emergency speech screening: acute emergency transcript triggers emergency card, suppresses Gemini fetch, and cancels audio playback.
+    - Read Aloud button triggers `speechSynthesis.speak`, transitions to Stop button, and allows stopping playback.
+    - Emergency card never renders a Read Aloud speaker button.
+  - All 40 backend tests and 62 frontend tests passed. Frontend build clean.
+- **Problems encountered & resolutions**:
+  - JSDOM does not provide `scrollIntoView` by default; added optional chaining `chatEndRef.current?.scrollIntoView?.(...)` and prototype mock.
+  - Updated `isSpeechRecognitionSupported` to check truthiness `Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)` instead of `in window` key existence check.
+
 

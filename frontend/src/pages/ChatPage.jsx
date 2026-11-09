@@ -17,6 +17,10 @@ import {
   Bot,
   User,
   ShieldAlert,
+  Mic,
+  MicOff,
+  Volume2,
+  Square,
 } from 'lucide-react'
 import {
   detectEmergency,
@@ -46,6 +50,17 @@ export default function ChatPage() {
   const [inputMessage, setInputMessage] = useState('')
   const [isThinking, setIsThinking] = useState(false)
   const [waitDuration, setWaitDuration] = useState(0)
+
+  // Voice state (Phase 5 - Web Speech API)
+  const [isListening, setIsListening] = useState(false)
+  const [speechError, setSpeechError] = useState(null)
+  const [speakingMessageId, setSpeakingMessageId] = useState(null)
+  const isSpeechRecognitionSupported =
+    typeof window !== 'undefined' &&
+    Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
+
+  const recognitionRef = useRef(null)
+
   const [messages, setMessages] = useState([
     {
       id: 'welcome',
@@ -61,7 +76,7 @@ export default function ChatPage() {
 
   // Scroll to bottom whenever messages or thinking state changes
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    chatEndRef.current?.scrollIntoView?.({ behavior: 'smooth' })
   }, [messages, isThinking, waitDuration])
 
   // Track thinking wait duration for 5s warning notice
@@ -79,6 +94,166 @@ export default function ChatPage() {
       if (timer) clearInterval(timer)
     }
   }, [isThinking])
+
+  // Cleanup speech synthesis & recognition on unmount
+  useEffect(() => {
+    return () => {
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.abort()
+        } catch (e) {}
+      }
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        try {
+          window.speechSynthesis.cancel()
+        } catch (e) {}
+      }
+    }
+  }, [])
+
+  const startListening = () => {
+    setSpeechError(null)
+    const SpeechRecognition =
+      typeof window !== 'undefined' &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition)
+
+    if (!SpeechRecognition) {
+      setSpeechError("Voice input isn't supported in this browser, but you can always type.")
+      return
+    }
+
+    try {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort()
+      }
+
+      const recognition = new SpeechRecognition()
+      recognition.lang = 'en-US'
+      recognition.interimResults = false
+      recognition.maxAlternatives = 1
+
+      recognition.onstart = () => {
+        setIsListening(true)
+        setSpeechError(null)
+      }
+
+      recognition.onend = () => {
+        setIsListening(false)
+      }
+
+      recognition.onerror = (event) => {
+        setIsListening(false)
+        if (event.error === 'not-allowed' || event.error === 'permission-denied') {
+          setSpeechError('Microphone access was blocked. You can still type your message.')
+        } else if (event.error !== 'aborted') {
+          setSpeechError('Voice input was interrupted. You can still type your message.')
+        }
+      }
+
+      recognition.onresult = (event) => {
+        const transcript = event.results?.[0]?.[0]?.transcript || ''
+        const trimmed = transcript.trim()
+        if (!trimmed) return
+
+        // Emergency check on speech input BEFORE sending or calling AI
+        const safetyCheck = detectEmergency(trimmed)
+        if (safetyCheck.isEmergency) {
+          // User needs quiet and immediate action: do NOT speak emergency aloud
+          if (typeof window !== 'undefined' && window.speechSynthesis) {
+            window.speechSynthesis.cancel()
+            setSpeakingMessageId(null)
+          }
+
+          const emergencyReplyText =
+            safetyCheck.category === 'CRISIS_SELF_HARM'
+              ? CRISIS_CARING_MESSAGE
+              : (safetyCheck.guidanceMessage || EMERGENCY_SERIOUS_GUIDANCE)
+          const nowTimestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `user-${Date.now()}-${Math.random()}`,
+              sender: 'user',
+              mode: activeMode,
+              text: trimmed,
+              timestamp: nowTimestamp,
+            },
+            {
+              id: `emergency-${Date.now()}-${Math.random()}`,
+              sender: 'anahitha',
+              mode: activeMode,
+              text: emergencyReplyText,
+              isEmergency: true,
+              category: safetyCheck.category,
+              timestamp: nowTimestamp,
+            },
+          ])
+          return
+        }
+
+        // Non-emergency: send to Dr. Anahitha
+        handleSendMessage(trimmed, activeMode)
+      }
+
+      recognitionRef.current = recognition
+      recognition.start()
+    } catch (err) {
+      setIsListening(false)
+      setSpeechError('Microphone access was blocked. You can still type your message.')
+    }
+  }
+
+  const stopListening = () => {
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop()
+      } catch (err) {}
+    }
+    setIsListening(false)
+  }
+
+  const handleToggleSpeak = (messageId, rawText) => {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return
+
+    // If currently speaking this message, stop
+    if (speakingMessageId === messageId) {
+      window.speechSynthesis.cancel()
+      setSpeakingMessageId(null)
+      return
+    }
+
+    // Stop any active speech
+    window.speechSynthesis.cancel()
+
+    // Clean markdown for clear speech synthesis
+    const plainText = (rawText || '')
+      .replace(/[*#_`~>[\]]/g, '')
+      .replace(/\n+/g, ' ')
+      .trim()
+
+    const utterance = new SpeechSynthesisUtterance(plainText)
+    utterance.lang = 'en-US'
+
+    try {
+      const voices = window.speechSynthesis.getVoices?.() || []
+      const englishVoice = voices.find((v) => v.lang && v.lang.startsWith('en'))
+      if (englishVoice) {
+        utterance.voice = englishVoice
+      }
+    } catch (e) {}
+
+    utterance.onend = () => {
+      setSpeakingMessageId(null)
+    }
+
+    utterance.onerror = () => {
+      setSpeakingMessageId(null)
+    }
+
+    setSpeakingMessageId(messageId)
+    window.speechSynthesis.speak(utterance)
+  }
 
   const handleSendMessage = async (customText, customMode) => {
     const rawText = customText !== undefined ? customText : inputMessage
@@ -105,6 +280,12 @@ export default function ChatPage() {
     // 2. Client-Side Safety Screener: MUST run BEFORE any network or AI call
     const safetyCheck = detectEmergency(trimmed)
     if (safetyCheck.isEmergency) {
+      // User needs quiet and immediate action: do NOT speak emergency aloud
+      if (typeof window !== 'undefined' && window.speechSynthesis) {
+        window.speechSynthesis.cancel()
+        setSpeakingMessageId(null)
+      }
+
       const emergencyReplyText =
         safetyCheck.category === 'CRISIS_SELF_HARM'
           ? CRISIS_CARING_MESSAGE
@@ -145,6 +326,10 @@ export default function ChatPage() {
 
       // If backend flagged emergency, show the exact same emergency card
       if (data.emergency) {
+        if (typeof window !== 'undefined' && window.speechSynthesis) {
+          window.speechSynthesis.cancel()
+          setSpeakingMessageId(null)
+        }
         const backendEmergencyReply = {
           id: `emergency-backend-${Date.now()}-${Math.random()}`,
           sender: 'anahitha',
@@ -426,6 +611,35 @@ export default function ChatPage() {
                           >
                             {msg.text}
                           </ReactMarkdown>
+
+                          {/* 5) Text-To-Speech for Dr. Anahitha's answers (Never shown for emergencies) */}
+                          <div className="pt-2 mt-2 border-t border-lavender/40 flex items-center justify-between">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleSpeak(msg.id, msg.text)}
+                              data-testid={`tts-button-${msg.id}`}
+                              className="inline-flex items-center space-x-1.5 text-xs text-plum/70 hover:text-plum font-medium px-2 py-1 rounded-lg hover:bg-lavender-light/50 transition-colors"
+                              aria-label={speakingMessageId === msg.id ? "Stop reading aloud" : "Read aloud"}
+                            >
+                              {speakingMessageId === msg.id ? (
+                                <>
+                                  <Square className="w-3.5 h-3.5 text-emergency-red fill-current" />
+                                  <span className="text-emergency-red font-semibold text-[11px]">Stop</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Volume2 className="w-3.5 h-3.5 text-plum/70" />
+                                  <span className="text-[11px]">Read aloud</span>
+                                </>
+                              )}
+                            </button>
+                            {speakingMessageId === msg.id && (
+                              <span className="text-[10px] text-plum/60 italic flex items-center space-x-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emergency-red animate-ping" />
+                                <span>Speaking in English...</span>
+                              </span>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -506,8 +720,45 @@ export default function ChatPage() {
           </div>
         )}
 
-        {/* 1) Input Composer with 1000-character Counter */}
+        {/* 1) Input Composer with Mic & 1000-character Counter */}
         <div className="pt-2">
+          {/* Listening Indicator with Animated Pulse */}
+          {isListening && (
+            <div
+              data-testid="listening-indicator"
+              className="flex items-center space-x-2 px-3.5 py-2.5 bg-blush/80 rounded-xl mb-2 text-xs font-semibold text-plum border border-rose/40 animate-pulse shadow-xs"
+            >
+              <span className="w-2.5 h-2.5 rounded-full bg-emergency-red animate-ping" />
+              <Mic className="w-4 h-4 text-emergency-red shrink-0" />
+              <span>Listening... speak clearly in English</span>
+              <button
+                type="button"
+                onClick={stopListening}
+                className="ml-auto text-[11px] font-bold underline text-plum hover:text-emergency-red"
+              >
+                Stop
+              </button>
+            </div>
+          )}
+
+          {/* Voice Error Banner (e.g. Permission Denied) */}
+          {speechError && (
+            <div
+              data-testid="voice-error-banner"
+              className="flex items-center justify-between px-3.5 py-2 bg-amber-50 rounded-xl mb-2 text-xs text-amber-900 border border-amber-300 shadow-xs"
+            >
+              <span>{speechError}</span>
+              <button
+                type="button"
+                onClick={() => setSpeechError(null)}
+                className="text-amber-800 font-bold ml-2 text-sm hover:text-plum"
+                aria-label="Dismiss error"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
           <form
             onSubmit={(e) => {
               e.preventDefault()
@@ -526,6 +777,29 @@ export default function ChatPage() {
                 aria-label="Message Dr. Anahitha"
               />
 
+              {/* Web Speech API Mic Button */}
+              {isSpeechRecognitionSupported ? (
+                <button
+                  type="button"
+                  onClick={isListening ? stopListening : startListening}
+                  disabled={isThinking}
+                  data-testid="mic-button"
+                  className={`p-3 rounded-xl transition-all shrink-0 shadow-sm ${
+                    isListening
+                      ? 'bg-emergency-red text-white hover:bg-red-700 animate-pulse'
+                      : 'bg-lavender-light text-plum hover:bg-lavender hover:text-plum'
+                  }`}
+                  aria-label={isListening ? 'Stop microphone' : 'Start microphone'}
+                  title={isListening ? 'Stop microphone' : 'Voice input (English only)'}
+                >
+                  {isListening ? (
+                    <MicOff className="w-4 h-4 text-white" />
+                  ) : (
+                    <Mic className="w-4 h-4 text-plum" />
+                  )}
+                </button>
+              ) : null}
+
               <button
                 type="submit"
                 disabled={!inputMessage.trim() || isThinking}
@@ -535,6 +809,16 @@ export default function ChatPage() {
                 <Send className="w-4 h-4 text-rose" />
               </button>
             </div>
+
+            {/* Browser Unsupported Note */}
+            {!isSpeechRecognitionSupported && (
+              <div
+                data-testid="voice-unsupported-note"
+                className="text-[11px] text-plum/60 italic px-1 pt-1.5"
+              >
+                Voice input isn't supported in this browser, but you can always type.
+              </div>
+            )}
 
             <div className="flex items-center justify-between px-3 pt-2 text-[10px] text-plum/50 border-t border-lavender/30 mt-2">
               <div>
