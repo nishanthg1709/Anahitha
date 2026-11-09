@@ -10,7 +10,7 @@ Rules: Zero-cost, privacy-first, safety-biased, strict emergency guardrails (112
 | Phase | Description | Status | Tests Passed | Notes / Problems |
 |---|---|---|---|---|
 | **Phase 1** | Chat screen (`/chat`) | **DONE** | Backend: 31/31, Frontend: 48/48, Build: Clean | Full markdown, 5 mode chips, pre-send safety interception, error/retry state, >5s wait indicator. |
-| **Phase 2** | Accounts and database (Supabase, env vars only) | **PENDING** | - | In progress next. |
+| **Phase 2** | Accounts and database (Supabase, env vars only) | **DONE** | Backend: 37/37, Frontend: 53/53, Build: Clean | SQL migrations with RLS, user isolation tested, guest chat stores nothing, protected routes. |
 | **Phase 3** | Knowledge base (RAG) | **PENDING** | - | Check `knowledge_base/documents`. |
 | **Phase 4** | Dashboard, history, privacy | **PENDING** | - | Dashboard, conversation history, profile, settings, privacy policy. |
 | **Phase 5** | English voice | **PENDING** | - | Web Speech API speech-to-text and text-to-speech. |
@@ -49,3 +49,33 @@ Rules: Zero-cost, privacy-first, safety-biased, strict emergency guardrails (112
 - **Problems encountered & resolutions**:
   - Initial test query clashed with starter prompt chips sharing the label "Understand Symptoms"; resolved by scoping the navigation bar queries.
   - All tests passed cleanly.
+
+### PHASE 2 - Accounts and database (Supabase, env vars only)
+- **Status**: **DONE**
+- **What was built**:
+  - `supabase/migrations/20261110000000_init_schema.sql`: Full SQL schema for `profiles`, `conversations`, and `messages` with indexes on `user_id` and `created_at`, plus Row Level Security (RLS) enabled on all tables (each user can only select/insert/update/delete their own rows). Includes user creation trigger on `auth.users`.
+  - Frontend Supabase client & environment configuration (`frontend/src/lib/supabase.js`, `frontend/.env.example`, `backend/.env.example`).
+  - Auth context and state provider (`frontend/src/context/AuthContext.jsx`) handling sign up, login, logout, and guest detection without breaking offline/demo mode.
+  - `LoginPage.jsx` and `SignupPage.jsx` with guest bypass links ("Continue as Guest"), validation, and emergency 112 links.
+  - Protected routes (`ProtectedRoute.jsx`) safeguarding `/dashboard` (`DashboardPage.jsx`) and `/history` (`HistoryPage.jsx`). Guests can freely access `/emergency` and `/chat`.
+  - Backend JWT verification (`backend/app/auth.py`) decoding Supabase tokens and enforcing 401s on unauthorized endpoints.
+  - Database repository (`backend/app/database.py`) enforcing strict Row Level Security.
+  - `GET /api/chat/history`: Returns the authenticated user's saved conversations and nested messages.
+  - `POST /api/chat`: Saves message exchanges only for authenticated users. For guest users, **stores nothing**.
+- **What was tested**:
+  - `backend/tests/test_accounts_database.py` (6 new pytest tests):
+    - `test_guest_chat_stores_nothing`: Verifies zero messages/conversations are stored when guests chat.
+    - `test_guest_emergency_chat_stores_nothing`: Verifies zero storage when guests trigger emergency flows.
+    - `test_authenticated_chat_saves_messages`: Verifies logged-in chat exchanges save and return via `/api/chat/history`.
+    - `test_row_level_security_isolation_between_two_users`: Generates tokens for User A and User B; verifies User A cannot read any of User B's rows and User B cannot read any of User A's rows.
+    - `test_history_endpoint_rejects_unauthenticated_requests`: Verifies HTTP 401 on missing auth.
+    - `test_history_endpoint_rejects_malformed_tokens`: Verifies HTTP 401 on invalid token strings.
+  - `frontend/src/context/AuthContext.test.jsx` (5 new vitest tests):
+    - AuthProvider initialization as guest.
+    - Sign in and sign out state transitions.
+    - ProtectedRoute redirection to `/login` for unauthenticated guests.
+    - LoginPage and SignupPage rendering and guest bypass links.
+  - Total tests: Backend 37/37 passed, Frontend 53/53 passed, Frontend build clean.
+- **Problems encountered & resolutions**:
+  - InsecureKeyLengthWarning in PyJWT test helper resolved by using a 32-byte secret.
+  - Typo in ChatPage `try:` statement fixed to `try {`.

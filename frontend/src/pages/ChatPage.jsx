@@ -23,6 +23,7 @@ import {
   CRISIS_CARING_MESSAGE,
   EMERGENCY_SERIOUS_GUIDANCE,
 } from '../utils/emergencyDetector'
+import { useAuth } from '../context/AuthContext'
 
 export const MODES = [
   { id: 'chat', label: '24/7 Chat', icon: MessageSquare, desc: 'Empathetic listening and health dialogue' },
@@ -40,6 +41,7 @@ export const STARTER_PROMPTS = [
 ]
 
 export default function ChatPage() {
+  const { session, user } = useAuth()
   const [activeMode, setActiveMode] = useState('chat')
   const [inputMessage, setInputMessage] = useState('')
   const [isThinking, setIsThinking] = useState(false)
@@ -124,9 +126,14 @@ export default function ChatPage() {
     // 3. Normal Flow: Call backend POST /api/chat
     setIsThinking(true)
     try {
+      const reqHeaders = { 'Content-Type': 'application/json' }
+      if (session?.access_token) {
+        reqHeaders['Authorization'] = `Bearer ${session.access_token}`
+      }
+
       const response = await fetch('http://127.0.0.1:8000/api/chat', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: reqHeaders,
         body: JSON.stringify({ message: trimmed, mode: modeToUse }),
       })
 
@@ -232,8 +239,24 @@ export default function ChatPage() {
           </div>
         </div>
 
-        {/* Action Controls: Reset & Permanent Call 112 */}
+        {/* Action Controls: Reset, Auth/Dashboard, & Permanent Call 112 */}
         <div className="flex items-center space-x-2 sm:space-x-3">
+          {user ? (
+            <Link
+              to="/dashboard"
+              className="p-2 rounded-xl text-plum/70 hover:text-plum hover:bg-lavender-light/50 transition-colors text-xs font-semibold"
+            >
+              Dashboard
+            </Link>
+          ) : (
+            <Link
+              to="/login"
+              className="p-2 rounded-xl text-plum/70 hover:text-plum hover:bg-lavender-light/50 transition-colors text-xs font-semibold"
+            >
+              Log In
+            </Link>
+          )}
+
           <button
             onClick={handleResetChat}
             className="p-2 rounded-xl text-plum/60 hover:text-plum hover:bg-lavender-light/50 transition-colors text-xs flex items-center space-x-1"

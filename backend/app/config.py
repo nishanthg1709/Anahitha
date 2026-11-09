@@ -23,6 +23,19 @@ def get_gemini_api_key() -> str:
 def is_gemini_api_key_set() -> bool:
     return bool(get_gemini_api_key())
 
+# Supabase Configuration
+def get_supabase_url() -> str:
+    return os.getenv("SUPABASE_URL", "").strip()
+
+def get_supabase_anon_key() -> str:
+    return os.getenv("SUPABASE_ANON_KEY", "").strip()
+
+def get_supabase_jwt_secret() -> str:
+    return os.getenv("SUPABASE_JWT_SECRET", "").strip()
+
+def is_supabase_configured() -> bool:
+    return bool(get_supabase_url() and get_supabase_anon_key())
+
 # Allowed CORS origins
 ALLOWED_CORS_ORIGINS = [
     "http://localhost:5173",

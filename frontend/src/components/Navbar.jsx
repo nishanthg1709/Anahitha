@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Phone, Menu, X, HeartHandshake } from 'lucide-react'
+import { Phone, Menu, X, HeartHandshake, User } from 'lucide-react'
+import { useAuth } from '../context/AuthContext'
 
 export default function Navbar({ onOpenEmergency }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { user } = useAuth()
 
   const navLinks = [
     { name: 'Features', href: '#features' },
@@ -44,8 +46,25 @@ export default function Navbar({ onOpenEmergency }) {
             ))}
           </nav>
 
-          {/* Action Area: Start Chat & Emergency Button */}
-          <div className="hidden sm:flex items-center space-x-4">
+          {/* Action Area: Start Chat, Auth, & Emergency Button */}
+          <div className="hidden sm:flex items-center space-x-3">
+            {user ? (
+              <Link
+                to="/dashboard"
+                className="text-xs font-semibold px-3 py-2 rounded-full text-plum hover:bg-lavender-light transition-all flex items-center space-x-1"
+              >
+                <User className="w-3.5 h-3.5" />
+                <span>Dashboard</span>
+              </Link>
+            ) : (
+              <Link
+                to="/login"
+                className="text-xs font-semibold px-3 py-2 rounded-full text-plum hover:bg-lavender-light transition-all"
+              >
+                Log In
+              </Link>
+            )}
+
             <Link
               to="/chat"
               className="text-xs font-semibold px-4 py-2.5 rounded-full border border-plum/20 text-plum hover:bg-lavender-light transition-all"

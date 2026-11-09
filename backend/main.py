@@ -9,6 +9,8 @@ from app.config import ALLOWED_CORS_ORIGINS, is_gemini_api_key_set, get_gemini_m
 from app.limiter import rate_limiter
 from app.healthcare.emergency import detect_emergency, EmergencyCheckResult
 from app.chat_service import generate_companion_reply
+from app.auth import get_optional_user, get_required_user
+from app.database import db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
@@ -91,15 +93,29 @@ def chat_endpoint(req: ChatRequest, request: Request):
     3. If emergency triggered, returns guidance immediately with emergency=true (no AI call).
     4. Otherwise, calls Gemini API with mode-specific instructions.
     5. Returns friendly fallback on AI failure (never crashes).
+    6. If user is authenticated, saves message history. If user is guest, stores nothing.
     """
     # 1. Rate limiting (20 requests per minute per IP)
     rate_limiter.check_rate_limit(request)
 
+    # Check for authenticated user (returns None for guests)
+    user = get_optional_user(request)
+
     # 2. Safety screening: must run BEFORE calling Gemini
     emergency_result = detect_emergency(req.message)
     if emergency_result.is_emergency:
+        reply_text = emergency_result.urgent_guidance or "These symptoms can be a sign of a serious emergency. Call 112 now."
+        if user:
+            db.save_chat_message(
+                user_id=user["id"],
+                mode=req.mode,
+                user_content=req.message,
+                assistant_content=reply_text,
+                is_emergency=True,
+            )
+
         return ChatResponse(
-            reply=emergency_result.urgent_guidance or "These symptoms can be a sign of a serious emergency. Call 112 now.",
+            reply=reply_text,
             emergency=True,
             category=emergency_result.category,
             urgent_guidance=emergency_result.urgent_guidance,
@@ -111,8 +127,29 @@ def chat_endpoint(req: ChatRequest, request: Request):
     # 3. Call Gemini via official google-genai SDK
     reply_text, error_msg = generate_companion_reply(req.message, mode=req.mode)
 
+    # Save to history ONLY if logged in (guests store nothing)
+    if user:
+        db.save_chat_message(
+            user_id=user["id"],
+            mode=req.mode,
+            user_content=req.message,
+            assistant_content=reply_text,
+            is_emergency=False,
+        )
+
     return ChatResponse(
         reply=reply_text,
         emergency=False,
         error=error_msg,
     )
+
+@app.get("/api/chat/history")
+def get_chat_history_endpoint(request: Request):
+    """
+    Retrieves saved conversation history for the authenticated user.
+    Enforces Row Level Security (RLS) - returns only the authenticated user's rows.
+    Requires a valid Supabase JWT Bearer token.
+    """
+    user = get_required_user(request)
+    conversations = db.get_user_chat_history(user["id"])
+    return {"conversations": conversations}
